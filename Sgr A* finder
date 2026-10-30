@@ -256,25 +256,30 @@ def optimize_window(event=None):
     sgr_az_rad = altaz.az.rad[visible_mask]
     sgr_elev_rad = altaz.alt.rad[visible_mask]
 
-    h_over_lambda = h_meters / (c / freq_hz)
-    ground_factor = np.abs(np.sin(2 * np.pi * h_over_lambda * np.sin(sgr_elev_rad)))
+    # Ground Reflection Factor
+    wavelength = c / freq_hz
+    h_over_lambda = h_meters / wavelength
+    ground_factor = np.sin(2 * np.pi * h_over_lambda * np.sin(sgr_elev_rad))**2
 
+    # Optimization Loop
     best_score = -1.0
     best_w1_angle = 0
     best_w2_angle = 90
 
-    for w1_deg in range(0, 95, 5):
+    for w1_deg in range(0, 90, 5):
         w1_rad = np.radians(w1_deg)
         w2_rad = np.radians(w1_deg + 90)
 
-        dot1 = np.cos(sgr_elev_rad) * np.cos(sgr_az_rad - w1_rad)
-        gain_w1 = np.sqrt(np.maximum(0, 1 - dot1**2))
+        # Dot product of source direction vector and dipole axis vector
+        cos_theta1 = np.cos(sgr_elev_rad) * np.cos(sgr_az_rad - w1_rad)
+        cos_theta2 = np.cos(sgr_elev_rad) * np.cos(sgr_az_rad - w2_rad)
 
-        dot2 = np.cos(sgr_elev_rad) * np.cos(sgr_az_rad - w2_rad)
-        gain_w2 = np.sqrt(np.maximum(0, 1 - dot2**2))
+        # Power pattern response: sin^2(theta) = 1 - cos^2(theta)
+        power_w1 = (1.0 - cos_theta1**2) * ground_factor
+        power_w2 = (1.0 - cos_theta2**2) * ground_factor
 
-        total_gain = np.sqrt(gain_w1**2 + gain_w2**2) * ground_factor
-        score = np.sum(total_gain)
+        # Score by maximizing the peak channel response across the path
+        score = np.sum(np.maximum(power_w1, power_w2))
 
         if score > best_score:
             best_score = score
