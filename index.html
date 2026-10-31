@@ -12,12 +12,39 @@
   <py-config>
     packages = ["numpy", "matplotlib", "astropy"]
   </py-config>
+
+  <!-- Browser Geolocation Script -->
+  <script>
+    window.userLat = null;
+    window.userLon = null;
+
+    function getUserLocation() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            window.userLat = position.coords.latitude;
+            window.userLon = position.coords.longitude;
+            const term = document.getElementById("terminal-out");
+            if (term) {
+              term.innerText = `Location detected (${window.userLat.toFixed(2)}°, ${window.userLon.toFixed(2)}°). Select target and click calculate.`;
+            }
+          },
+          (error) => {
+            console.warn("Geolocation denied or unavailable. Using Florence, SC default.");
+          }
+        );
+      }
+    }
+
+    // Trigger location prompt on page load
+    window.addEventListener("DOMContentLoaded", getUserLocation);
+  </script>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen p-6 font-sans">
 
   <div class="max-w-4xl mx-auto space-y-6">
     <header class="text-center space-y-2">
-      <h1 class="text-3xl font-bold text-yellow-400">Honey, where's the black hole?</h1>
+      <h1 class="text-3xl font-bold text-yellow-400">Honey, where's my black hole?</h1>
       <p class="text-gray-400 text-sm">Dipole Array & Horizon Tracking for Black Holes & Deep Sky Radio Sources</p>
     </header>
 
@@ -42,7 +69,7 @@
 
     <!-- Output Terminal -->
     <div class="bg-black p-6 rounded-xl border border-gray-800 font-mono text-green-400 shadow-2xl overflow-x-auto whitespace-pre">
-      <div id="terminal-out">Select a target, date, and click 'Calculate Horizon Track'...</div>
+      <div id="terminal-out">Detecting location... Select a target, date, and click 'Calculate Horizon Track'...</div>
     </div>
 
     <!-- Plots -->
@@ -69,6 +96,7 @@
   </div>
 
   <script type="py">
+import warnings
 import datetime
 import numpy as np
 import matplotlib.pyplot as plt
@@ -76,29 +104,24 @@ import matplotlib.dates as mdates
 from astropy.coordinates import EarthLocation, SkyCoord, AltAz
 from astropy.time import Time
 import astropy.units as u
-from pyscript import document, display
-import warnings
 from astropy.utils.exceptions import AstropyWarning
 from astropy.utils.iers import iers
+from pyscript import document, display, window
 
-# Disable online Earth rotation (IERS) data downloads in WebAssembly
+# Disable online IERS downloads & suppress PyScript warning banners
 iers.conf.auto_download = False
 iers.conf.auto_max_age = None
-
-# Suppress all Astropy warning banners from rendering in the PyScript UI
 warnings.simplefilter('ignore', category=AstropyWarning)
 warnings.filterwarnings('ignore')
 
-    
 h_meters = 3.0
 freq_hz = 20.1e6
 c = 3.0e8
 
-# Default observer location (Florence, SC: 34.20 N, -79.76 W)
+# Default observer location (Florence, SC)
 LAT_DEFAULT = 34.20
 LON_DEFAULT = -79.76
 
-# Hardcoded coordinates to avoid Pyodide SSL/WebAssembly network restrictions
 TARGET_COORDINATES = {
     "Sgr A*":  {"ra": "17h45m40.0409s", "dec": "-29d00m28.118s"},
     "M87*":    {"ra": "12h30m49.4234s", "dec": "+12d23m28.043s"},
@@ -109,7 +132,6 @@ TARGET_COORDINATES = {
 state = {}
 
 def parse_user_date(raw_input):
-    """Normalize user date input into standard YYYY-MM-DD HH:MM:SS format."""
     raw = raw_input.strip()
     if " " in raw:
         date_part, time_part = raw.split(" ", 1)
@@ -211,14 +233,18 @@ def show_path(event=None):
     raw_date = document.getElementById("dateTimeInput").value
     date_str = parse_user_date(raw_date)
 
-    lat, lon = LAT_DEFAULT, LON_DEFAULT
+    # Use browser-detected location if available; otherwise default to Florence, SC
+    if hasattr(window, 'userLat') and window.userLat is not None and hasattr(window, 'userLon') and window.userLon is not None:
+        lat = float(window.userLat)
+        lon = float(window.userLon)
+    else:
+        lat, lon = LAT_DEFAULT, LON_DEFAULT
+
     location = EarthLocation(lat=lat * u.deg, lon=lon * u.deg, height=0 * u.m)
     
-    # Load coordinates from static dictionary
     coords = TARGET_COORDINATES[target_name]
     target = SkyCoord(ra=coords["ra"], dec=coords["dec"], frame='icrs')
 
-    # 24-hour fine grid
     times_fine = Time(date_str) + np.arange(0, 24 * 60, 1) * u.minute
     dt_list = np.array([t.to_datetime() for t in times_fine])
     altaz_fine = target.transform_to(AltAz(obstime=times_fine, location=location))
@@ -240,7 +266,6 @@ def show_path(event=None):
     state["r_dist"] = r_dist
     state["hourly"] = hourly
 
-    # Extended look-ahead array (32 hours)
     times_extended = Time(date_str) + np.arange(0, 32 * 60, 1) * u.minute
     altaz_extended = target.transform_to(AltAz(obstime=times_extended, location=location))
     alt_ext = altaz_extended.alt.deg
@@ -249,7 +274,7 @@ def show_path(event=None):
     above_horizon_indices = np.where(alt > 0)[0]
 
     term_text = f" SKY PATH FOR {target_name}\n"
-    term_text += f" Observer Location : {lat:.2f} deg N, {lon:.2f} deg W\n\n"
+    term_text += f" Observer Location : {lat:.2f} deg, {lon:.2f} deg\n\n"
 
     if len(above_horizon_indices) > 0:
         max_alt_idx = np.argmax(alt)
@@ -353,7 +378,7 @@ def optimize_window(event=None):
     document.getElementById("terminal-out").innerText = term_text
     draw_track(highlight_start=observe_start, highlight_end=observe_end)
 
-document.getElementById("terminal-out").innerText = "Select a target, date, and click 'Calculate Horizon Track' to calculate."
+document.getElementById("terminal-out").innerText = "Detecting location... Select target, date, and click 'Calculate Horizon Track'."
   </script>
 </body>
 </html>
