@@ -77,7 +77,19 @@ from astropy.coordinates import EarthLocation, SkyCoord, AltAz
 from astropy.time import Time
 import astropy.units as u
 from pyscript import document, display
+import warnings
+from astropy.utils.exceptions import AstropyWarning
+from astropy.utils.iers import iers
 
+# Disable online Earth rotation (IERS) data downloads in WebAssembly
+iers.conf.auto_download = False
+iers.conf.auto_max_age = None
+
+# Suppress all Astropy warning banners from rendering in the PyScript UI
+warnings.simplefilter('ignore', category=AstropyWarning)
+warnings.filterwarnings('ignore')
+
+    
 h_meters = 3.0
 freq_hz = 20.1e6
 c = 3.0e8
