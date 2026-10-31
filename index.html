@@ -68,7 +68,7 @@ import matplotlib.dates as mdates
 from astropy.coordinates import EarthLocation, SkyCoord, AltAz
 from astropy.time import Time
 import astropy.units as u
-from pyscript import Element, display
+from pyscript import document, display
 
 target_name = 'Sgr A*'
 h_meters = 3.0
@@ -107,8 +107,8 @@ def draw_track(highlight_start=None, highlight_end=None):
     lat, lon = state["lat"], state["lon"]
     times_fine = state["times_fine"]
 
-    Element("plot1-out").element.innerHTML = ""
-    Element("plot2-out").element.innerHTML = ""
+    document.getElementById("plot1-out").innerHTML = ""
+    document.getElementById("plot2-out").innerHTML = ""
 
     window_mask_fine = None
     if highlight_start is not None:
@@ -177,10 +177,10 @@ def draw_track(highlight_start=None, highlight_end=None):
     plt.close(fig2)
 
 def show_path(event=None):
-    Element("terminal-out").element.innerText = "Running calculations..."
-    Element("window-controls").element.classList.add("hidden")
+    document.getElementById("terminal-out").innerText = "Running calculations..."
+    document.getElementById("window-controls").classList.add("hidden")
 
-    raw_date = Element("dateTimeInput").element.value
+    raw_date = document.getElementById("dateTimeInput").value
     date_str = parse_user_date(raw_date)
 
     # Ground-locked location (prevents IP jumps across deployment servers)
@@ -244,29 +244,29 @@ def show_path(event=None):
         term_text += "Enter observing window below and click Calculate.\n"
         
         # Populate Step 2 default times automatically for the selected date
-        Element("obsStartInput").element.value = f"{dt_list[0].strftime('%Y-%m-%d')} {rise_time.strftime('%H:%M:%S')}"
-        Element("obsEndInput").element.value = f"{dt_list[0].strftime('%Y-%m-%d')} {peak_time.strftime('%H:%M:%S')}"
+        document.getElementById("obsStartInput").value = f"{dt_list[0].strftime('%Y-%m-%d')} {rise_time.strftime('%H:%M:%S')}"
+        document.getElementById("obsEndInput").value = f"{dt_list[0].strftime('%Y-%m-%d')} {peak_time.strftime('%H:%M:%S')}"
         
-        Element("window-controls").element.classList.remove("hidden")
+        document.getElementById("window-controls").classList.remove("hidden")
     else:
         term_text += "Target does not rise above horizon during this window.\n"
 
-    Element("terminal-out").element.innerText = term_text
+    document.getElementById("terminal-out").innerText = term_text
     draw_track()
 
 def optimize_window(event=None):
     if "location" not in state:
-        Element("terminal-out").element.innerText = "Click 'Find Sgr A*' first."
+        document.getElementById("terminal-out").innerText = "Click 'Find Sgr A*' first."
         return
 
-    obs_start_str = parse_user_date(Element("obsStartInput").element.value)
-    obs_end_str = parse_user_date(Element("obsEndInput").element.value)
+    obs_start_str = parse_user_date(document.getElementById("obsStartInput").value)
+    obs_end_str = parse_user_date(document.getElementById("obsEndInput").value)
 
     try:
         observe_start = Time(obs_start_str)
         observe_end = Time(obs_end_str)
     except Exception:
-        Element("terminal-out").element.innerText = "Error parsing times. Use format YYYY-MM-DD HH:MM:SS (UTC)."
+        document.getElementById("terminal-out").innerText = "Error parsing times. Use format YYYY-MM-DD HH:MM:SS (UTC)."
         return
 
     location = state["location"]
@@ -284,7 +284,7 @@ def optimize_window(event=None):
 
     if not np.any(visible_mask):
         term_text += "WARNING: Sgr A* is NOT above the horizon during your chosen observing window.\n"
-        Element("terminal-out").element.innerText = term_text
+        document.getElementById("terminal-out").innerText = term_text
         return
 
     sgr_az_rad = altaz.az.rad[visible_mask]
@@ -320,10 +320,10 @@ def optimize_window(event=None):
     term_text += f" Wire 1 Angle    : {best_w1_angle} deg from North\n"
     term_text += f" Wire 2 Angle    : {best_w2_angle} deg from North\n"
 
-    Element("terminal-out").element.innerText = term_text
+    document.getElementById("terminal-out").innerText = term_text
     draw_track(highlight_start=observe_start, highlight_end=observe_end)
 
-Element("terminal-out").element.innerText = "Select a date and click 'Find Sgr A*' to calculate."
+document.getElementById("terminal-out").innerText = "Select a date and click 'Find Sgr A*' to calculate."
   </script>
 </body>
 </html>
