@@ -13,13 +13,13 @@
     packages = ["numpy", "matplotlib", "astropy"]
   </py-config>
 
-  <!-- Browser Geolocation & Date Script -->
   <script>
     window.userLat = null;
     window.userLon = null;
+    window.userTzOffsetMinutes = new Date().getTimezoneOffset(); // UTC offset in minutes
+    window.userTzName = Intl.DateTimeFormat().resolvedOptions().timeZone || "Local";
 
     function initUserContext() {
-      // Auto-set date input to user's current local date (YYYY-MM-DD)
       const dateInput = document.getElementById("dateTimeInput");
       if (dateInput) {
         const today = new Date();
@@ -29,7 +29,6 @@
         dateInput.value = `${year}-${month}-${day}`;
       }
 
-      // Obtain geolocation
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
@@ -41,7 +40,7 @@
             }
           },
           (error) => {
-            console.warn("Geolocation denied or unavailable. Using Florence, SC default.");
+            console.warn("Geolocation denied or unavailable. Using default location.");
           }
         );
       }
@@ -58,7 +57,6 @@
       <p class="text-gray-400 text-sm">Dipole Array & Horizon Tracking for Deep Sky Radio Sources</p>
     </header>
 
-    <!-- STEP 1: Target & Date Inputs -->
     <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 flex flex-col items-center gap-6">
       <div class="flex flex-wrap items-center justify-center gap-6 w-full">
         <div class="flex items-center gap-2">
@@ -78,24 +76,20 @@
         </div>
       </div>
 
-      <!-- Centered Calculate Button -->
       <button id="path-btn" py-click="show_path" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 px-8 rounded-lg transition duration-200 shadow-md">
         Calculate Horizon Track
       </button>
     </div>
 
-    <!-- Output Terminal -->
     <div class="bg-black p-6 rounded-xl border border-gray-800 font-mono text-green-400 shadow-2xl overflow-x-auto whitespace-pre">
       <div id="terminal-out">Detecting location... Select a target, date, and click 'Calculate Horizon Track'...</div>
     </div>
 
-    <!-- Plots -->
     <div class="space-y-6">
       <div id="plot1-out" class="w-full flex justify-center bg-gray-800 p-4 rounded-xl border border-gray-700"></div>
       <div id="plot2-out" class="w-full flex justify-center bg-gray-800 p-4 rounded-xl border border-gray-700"></div>
     </div>
 
-    <!-- STEP 2: Observing window controls -->
     <div id="window-controls" class="hidden bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 space-y-4">
       <p class="text-gray-300 font-medium">Step 2: When will you actually be observing?</p>
       <div class="flex flex-col md:flex-row items-center gap-4">
@@ -115,7 +109,6 @@
   <script type="py">
 import warnings
 import datetime
-from zoneinfo import ZoneInfo
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -134,7 +127,6 @@ warnings.filterwarnings('ignore')
 h_meters = 3.0
 c = 3.0e8
 
-# Default observer location (Florence, SC fallback)
 LAT_DEFAULT = 34.20
 LON_DEFAULT = -79.76
 
@@ -148,16 +140,19 @@ TARGET_COORDINATES = {
 
 state = {}
 
-def get_user_timezone():
-    """Detect local timezone dynamically from browser JS runtime."""
+def get_user_timezone_info():
+    """Retrieve exact local timezone offset and name explicitly from JS browser runtime."""
     try:
-        tz_str = window.Intl.DateTimeFormat().resolvedOptions().timeZone
-        return ZoneInfo(tz_str)
+        offset_minutes = int(window.userTzOffsetMinutes)
+        tz_name = str(window.userTzName)
+        # JS getTimezoneOffset() returns minutes WEST of UTC (e.g. +300 for UTC-5),
+        # so negate it to construct standard Python timedelta timezone.
+        local_tz = datetime.timezone(datetime.timedelta(minutes=-offset_minutes))
+        return local_tz, tz_name
     except Exception:
-        return datetime.timezone.utc
+        return datetime.timezone.utc, "UTC"
 
 def parse_user_date_to_utc(raw_input):
-    """Parses input string into a naive UTC string format."""
     raw = raw_input.strip()
     if " " in raw:
         date_part, time_part = raw.split(" ", 1)
@@ -173,12 +168,12 @@ def parse_user_date_to_utc(raw_input):
     return f"{date_part} {time_part}"
 
 def draw_track(highlight_start_utc=None, highlight_end_utc=None):
-    local_tz = get_user_timezone()
+    local_tz, tz_name = get_user_timezone_info()
     dt_list_utc = state["dt_list_utc"]
     
-    # Convert UTC datetimes specifically for local time plotting
+    # All astronomical calculations are completed in UTC.
+    # Convert UTC datetimes to explicit local timezone strictly for plotting array.
     dt_list_local = [dt.replace(tzinfo=datetime.timezone.utc).astimezone(local_tz) for dt in dt_list_utc]
-    tz_name = dt_list_local[0].strftime('%Z') or "Local"
 
     alt = state["alt"]
     az = state["az"]
@@ -199,7 +194,7 @@ def draw_track(highlight_start_utc=None, highlight_end_utc=None):
     fig1 = plt.figure(figsize=(7, 7), facecolor='black')
     ax1 = fig1.add_subplot(111, polar=True, facecolor='#001144')
     ax1.set_theta_zero_location('N')
-    ax1.set_theta_direction(-1)  # Clockwise: N -> E -> S -> W
+    ax1.set_theta_direction(-1)
     ax1.set_ylim(0, 90)
     ax1.set_yticks([0, 30, 60, 90])
     ax1.set_yticklabels(['90°', '60°', '30°', '0°'], color='#888888', fontsize=8)
@@ -264,7 +259,7 @@ def show_path(event=None):
     document.getElementById("terminal-out").innerText = "Running astronomical calculations..."
     document.getElementById("window-controls").classList.add("hidden")
 
-    local_tz = get_user_timezone()
+    local_tz, tz_name = get_user_timezone_info()
     target_name = document.getElementById("targetSelect").value
     raw_date = document.getElementById("dateTimeInput").value
     date_str_utc = parse_user_date_to_utc(raw_date)
@@ -275,8 +270,8 @@ def show_path(event=None):
     else:
         lat, lon = LAT_DEFAULT, LON_DEFAULT
 
+    # Astropy location & transform executed strictly in UTC
     location = EarthLocation(lat=lat * u.deg, lon=lon * u.deg, height=0 * u.m)
-    
     coords = TARGET_COORDINATES[target_name]
     target = SkyCoord(ra=coords["ra"], dec=coords["dec"], frame='icrs')
     freq_hz = coords["freq_hz"]
@@ -309,8 +304,6 @@ def show_path(event=None):
     dt_ext_utc = np.array([t.to_datetime(timezone=datetime.timezone.utc) for t in times_extended_utc])
 
     above_horizon_indices = np.where(alt > 0)[0]
-
-    tz_name = dt_list_utc[0].astimezone(local_tz).strftime('%Z') or "Local Time"
 
     term_text = f" SKY PATH FOR {target_name}\n"
     term_text += f" Target Frequency   : {freq_hz / 1.0e6:.1f} MHz (Auto-selected)\n"
@@ -378,10 +371,9 @@ def optimize_window(event=None):
 
     visible_mask = altaz.alt.deg > 0
 
-    local_tz = get_user_timezone()
+    local_tz, tz_name = get_user_timezone_info()
     start_dt_local = observe_start_utc.to_datetime(timezone=datetime.timezone.utc).astimezone(local_tz)
     end_dt_local = observe_end_utc.to_datetime(timezone=datetime.timezone.utc).astimezone(local_tz)
-    tz_name = start_dt_local.strftime('%Z') or "Local"
 
     term_text = f" OPTIMAL WIRE ORIENTATION FOR {target_name} DURING YOUR OBSERVING WINDOW\n"
     term_text += f" Target Frequency   : {freq_hz / 1.0e6:.1f} MHz (Auto-selected)\n"
