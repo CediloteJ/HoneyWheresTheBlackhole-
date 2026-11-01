@@ -1,119 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Celestial Radio Target Observation Planner</title>
-
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://pyscript.net/releases/2024.1.1/core.css">
-  <script type="module" src="https://pyscript.net/releases/2024.1.1/core.js"></script>
-
-  <py-config>
-    packages = ["numpy", "matplotlib", "astropy"]
-  </py-config>
-
-  <!-- Browser Geolocation & Date Script -->
-  <script>
-    window.userLat = null;
-    window.userLon = null;
-
-    function initUserContext() {
-      // Auto-set date input to user's current local date (YYYY-MM-DD)
-      const dateInput = document.getElementById("dateTimeInput");
-      if (dateInput) {
-        const today = new Date();
-        const year = today.getFullYear();
-        const month = String(today.getMonth() + 1).padStart(2, '0');
-        const day = String(today.getDate()).padStart(2, '0');
-        dateInput.value = `${year}-${month}-${day}`;
-      }
-
-      // Obtain geolocation
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            window.userLat = position.coords.latitude;
-            window.userLon = position.coords.longitude;
-            const term = document.getElementById("terminal-out");
-            if (term) {
-              term.innerText = `Location detected (${window.userLat.toFixed(2)}°, ${window.userLon.toFixed(2)}°). Select target and click calculate.`;
-            }
-          },
-          (error) => {
-            console.warn("Geolocation denied or unavailable. Using Florence, SC default.");
-          }
-        );
-      }
-    }
-
-    window.addEventListener("DOMContentLoaded", initUserContext);
-  </script>
-</head>
-<body class="bg-gray-900 text-gray-100 min-h-screen p-6 font-sans">
-
-  <div class="max-w-4xl mx-auto space-y-6">
-    <header class="text-center space-y-2">
-      <h1 class="text-3xl font-bold text-yellow-400">Honey, where's the black hole?</h1>
-      <p class="text-gray-400 text-sm">Dipole Array & Horizon Tracking for Black Holes & Deep Sky Radio Sources</p>
-    </header>
-
-    <!-- STEP 1: Target & Date Inputs (NO FREQUENCY INPUT) -->
-    <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 flex flex-col items-center gap-6">
-      <div class="flex flex-wrap items-center justify-center gap-6 w-full">
-        <div class="flex items-center gap-2">
-          <label for="targetSelect" class="font-medium text-gray-300 whitespace-nowrap">Target:</label>
-          <select id="targetSelect" class="bg-gray-700 border border-gray-600 px-3 py-2 rounded text-white font-mono">
-            <option value="Sgr A*">Sagittarius A* (Supermassive Black Hole)</option>
-            <option value="M87*">M87* (Supermassive Black Hole)</option>
-            <option value="Cyg X-1">Cygnus X-1 (Stellar-Mass BH)</option>
-            <option value="Cas A">Cassiopeia A (Radio Supernova)</option>
-          </select>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <label for="dateTimeInput" class="font-medium text-gray-300 whitespace-nowrap">Date:</label>
-          <input type="date" id="dateTimeInput" class="bg-gray-700 border border-gray-600 px-3 py-2 rounded text-white font-mono">
-        </div>
-      </div>
-
-      <!-- Centered Calculate Button -->
-      <button id="path-btn" py-click="show_path" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 px-8 rounded-lg transition duration-200 shadow-md">
-        Calculate Horizon Track
-      </button>
-    </div>
-
-    <!-- Output Terminal: Frequency is output strictly here -->
-    <div class="bg-black p-6 rounded-xl border border-gray-800 font-mono text-green-400 shadow-2xl overflow-x-auto whitespace-pre">
-      <div id="terminal-out">Detecting location... Select a target, date, and click 'Calculate Horizon Track'...</div>
-    </div>
-
-    <!-- Plots -->
-    <div class="space-y-6">
-      <div id="plot1-out" class="w-full flex justify-center bg-gray-800 p-4 rounded-xl border border-gray-700"></div>
-      <div id="plot2-out" class="w-full flex justify-center bg-gray-800 p-4 rounded-xl border border-gray-700"></div>
-    </div>
-
-    <!-- STEP 2: Observing window controls -->
-    <div id="window-controls" class="hidden bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 space-y-4">
-      <p class="text-gray-300 font-medium">Step 2: When will you actually be observing?</p>
-      <div class="flex flex-col md:flex-row items-center gap-4">
-        <label for="obsStartInput" class="font-medium text-gray-300 whitespace-nowrap w-40">Start (UTC):</label>
-        <input type="text" id="obsStartInput" class="bg-gray-700 border border-gray-600 px-3 py-2 rounded text-white font-mono w-full">
-      </div>
-      <div class="flex flex-col md:flex-row items-center gap-4">
-        <label for="obsEndInput" class="font-medium text-gray-300 whitespace-nowrap w-40">End (UTC):</label>
-        <input type="text" id="obsEndInput" class="bg-gray-700 border border-gray-600 px-3 py-2 rounded text-white font-mono w-full">
-      </div>
-      <button id="optimize-btn" py-click="optimize_window" class="w-full md:w-auto bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-2 px-6 rounded-lg transition duration-200">
-        Calculate Best Wire Orientation
-      </button>
-    </div>
-  </div>
-
-  <script type="py">
 import warnings
 import datetime
+from zoneinfo import ZoneInfo
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -136,17 +23,25 @@ c = 3.0e8
 LAT_DEFAULT = 34.20
 LON_DEFAULT = -79.76
 
-# Target coordinates mapped directly to auto-selected radio frequencies (in Hz)
 TARGET_COORDINATES = {
-    "Sgr A*":  {"ra": "17h45m40.0409s", "dec": "-29d00m28.118s", "freq_hz": 20.1e6},   # 20.1 MHz
-    "M87*":    {"ra": "12h30m49.4234s", "dec": "+12d23m28.043s", "freq_hz": 408.0e6},  # 408 MHz
-    "Cyg X-1": {"ra": "19h58m21.6756s", "dec": "+35d12m05.784s", "freq_hz": 1.42e9},   # 1420 MHz (21cm HI Line)
-    "Cas A":   {"ra": "23h23m24.0000s", "dec": "+58d48m54.000s", "freq_hz": 80.0e6}    # 80 MHz
+    "Sgr A*":  {"ra": "17h45m40.0409s", "dec": "-29d00m28.118s", "freq_hz": 20.1e6},
+    "M87*":    {"ra": "12h30m49.4234s", "dec": "+12d23m28.043s", "freq_hz": 408.0e6},
+    "Cyg X-1": {"ra": "19h58m21.6756s", "dec": "+35d12m05.784s", "freq_hz": 1.42e9},
+    "Cas A":   {"ra": "23h23m24.0000s", "dec": "+58d48m54.000s", "freq_hz": 80.0e6}
 }
 
 state = {}
 
-def parse_user_date(raw_input):
+def get_user_timezone():
+    """Detect local timezone from browser JS or fallback to system local."""
+    try:
+        tz_str = window.Intl.DateTimeFormat().resolvedOptions().timeZone
+        return ZoneInfo(tz_str)
+    except Exception:
+        return datetime.datetime.now().astimezone().tzinfo
+
+def parse_user_date_to_utc(raw_input):
+    """Parses input string into a naive UTC string format."""
     raw = raw_input.strip()
     if " " in raw:
         date_part, time_part = raw.split(" ", 1)
@@ -161,24 +56,30 @@ def parse_user_date(raw_input):
             
     return f"{date_part} {time_part}"
 
-def draw_track(highlight_start=None, highlight_end=None):
-    dt_list = state["dt_list"]
+def draw_track(highlight_start_utc=None, highlight_end_utc=None):
+    local_tz = get_user_timezone()
+    dt_list_utc = state["dt_list_utc"]
+    
+    # Convert UTC datetimes to local time zone specifically for plotting
+    dt_list_local = [dt.replace(tzinfo=datetime.timezone.utc).astimezone(local_tz) for dt in dt_list_utc]
+    tz_name = dt_list_local[0].strftime('%Z') or "Local"
+
     alt = state["alt"]
     az = state["az"]
     r_dist = state["r_dist"]
     hourly = state["hourly"]
     lat, lon = state["lat"], state["lon"]
-    times_fine = state["times_fine"]
+    times_fine_utc = state["times_fine"]
     target_name = state["target_name"]
 
     document.getElementById("plot1-out").innerHTML = ""
     document.getElementById("plot2-out").innerHTML = ""
 
     window_mask_fine = None
-    if highlight_start is not None:
-        window_mask_fine = (times_fine >= highlight_start) & (times_fine <= highlight_end)
+    if highlight_start_utc is not None:
+        window_mask_fine = (times_fine_utc >= highlight_start_utc) & (times_fine_utc <= highlight_end_utc)
 
-    # Polar Track
+    # 1. Polar Track Plot
     fig1 = plt.figure(figsize=(7, 7), facecolor='black')
     ax1 = fig1.add_subplot(111, polar=True, facecolor='#001144')
     ax1.set_theta_zero_location('N')
@@ -204,7 +105,8 @@ def draw_track(highlight_start=None, highlight_end=None):
 
     for i in np.where(hourly & (alt >= 0))[0]:
         ax1.plot(az[i], r_dist[i], 'o', color='yellow', markersize=4)
-        ax1.annotate(dt_list[i].strftime('%H:%M'), xy=(az[i], r_dist[i]), xytext=(0, 10),
+        # Display local time on polar markers
+        ax1.annotate(dt_list_local[i].strftime('%H:%M'), xy=(az[i], r_dist[i]), xytext=(0, 10),
                      textcoords='offset points', ha='center', color='yellow', fontsize=9)
 
     ax1.legend(loc='upper right', bbox_to_anchor=(1.35, 1.1), facecolor='black', labelcolor='white', fontsize=8)
@@ -213,27 +115,30 @@ def draw_track(highlight_start=None, highlight_end=None):
     display(fig1, target="plot1-out")
     plt.close(fig1)
 
-    # Altitude vs Time Plot
+    # 2. Altitude vs. Local Time Plot
     fig2, ax2 = plt.subplots(figsize=(8, 4))
-    ax2.plot(dt_list, alt, color='#3b82f6', lw=2, label=f'{target_name}')
+    ax2.plot(dt_list_local, alt, color='#3b82f6', lw=2, label=f'{target_name}')
     ax2.axhline(0, color='red', linestyle='--', label='Horizon')
-    if highlight_start is not None:
-        ax2.axvspan(highlight_start.to_datetime(), highlight_end.to_datetime(), color='orange', alpha=0.25, label='Your window')
+
+    if highlight_start_utc is not None:
+        start_local = highlight_start_utc.to_datetime(timezone=datetime.timezone.utc).astimezone(local_tz)
+        end_local = highlight_end_utc.to_datetime(timezone=datetime.timezone.utc).astimezone(local_tz)
+        ax2.axvspan(start_local, end_local, color='orange', alpha=0.25, label='Your window')
 
     for i in np.where(hourly & (alt > 0))[0]:
-        ax2.annotate(dt_list[i].strftime('%H:%M'), (dt_list[i], alt[i]),
+        ax2.annotate(dt_list_local[i].strftime('%H:%M'), (dt_list_local[i], alt[i]),
                      textcoords="offset points", xytext=(0, 6), ha='center', fontsize=8)
 
-    ax2.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-    ax2.xaxis.set_major_locator(mdates.HourLocator(interval=2))
-    ax2.set_xlim(dt_list[0], dt_list[-1])
+    ax2.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M', tz=local_tz))
+    ax2.xaxis.set_major_locator(mdates.HourLocator(interval=2, tz=local_tz))
+    ax2.set_xlim(dt_list_local[0], dt_list_local[-1])
     fig2.autofmt_xdate()
 
-    ax2.set_title(f'{target_name} Altitude vs. Time (UTC)', color='white')
-    ax2.set_xlabel('Time (UTC)')
+    ax2.set_title(f'{target_name} Altitude vs. Local Time ({tz_name})', color='white')
+    ax2.set_xlabel(f'Local Time ({tz_name})')
     ax2.set_ylabel('Altitude (degrees)')
     ax2.set_ylim(-90, max(max(alt) + 15, 25))
-    ax2.fill_between(dt_list, alt, 0, where=(alt <= 0), color='gray', alpha=0.3, label='Below Horizon')
+    ax2.fill_between(dt_list_local, alt, 0, where=(alt <= 0), color='gray', alpha=0.3, label='Below Horizon')
     ax2.grid(True, linestyle=':', alpha=0.6)
     ax2.legend(loc='lower right')
     plt.tight_layout()
@@ -244,9 +149,10 @@ def show_path(event=None):
     document.getElementById("terminal-out").innerText = "Running astronomical calculations..."
     document.getElementById("window-controls").classList.add("hidden")
 
+    local_tz = get_user_timezone()
     target_name = document.getElementById("targetSelect").value
     raw_date = document.getElementById("dateTimeInput").value
-    date_str = parse_user_date(raw_date)
+    date_str_utc = parse_user_date_to_utc(raw_date)
 
     if hasattr(window, 'userLat') and window.userLat is not None and hasattr(window, 'userLon') and window.userLon is not None:
         lat = float(window.userLat)
@@ -256,39 +162,41 @@ def show_path(event=None):
 
     location = EarthLocation(lat=lat * u.deg, lon=lon * u.deg, height=0 * u.m)
     
-    # Target lookup with automatic frequency setting
     coords = TARGET_COORDINATES[target_name]
     target = SkyCoord(ra=coords["ra"], dec=coords["dec"], frame='icrs')
     freq_hz = coords["freq_hz"]
 
-    times_fine = Time(date_str) + np.arange(0, 24 * 60, 1) * u.minute
-    dt_list = np.array([t.to_datetime() for t in times_fine])
-    altaz_fine = target.transform_to(AltAz(obstime=times_fine, location=location))
+    # All state calculations performed in UTC
+    times_fine_utc = Time(date_str_utc, scale='utc') + np.arange(0, 24 * 60, 1) * u.minute
+    dt_list_utc = np.array([t.to_datetime(timezone=datetime.timezone.utc) for t in times_fine_utc])
+    
+    altaz_fine = target.transform_to(AltAz(obstime=times_fine_utc, location=location))
     alt = altaz_fine.alt.deg
     az = altaz_fine.az.rad
     r_dist = 90 - alt
-    hourly = np.array([dt.minute == 0 for dt in dt_list])
+    hourly = np.array([dt.minute == 0 for dt in dt_list_utc])
 
     state["target_name"] = target_name
-    state["date_str"] = date_str
     state["location"] = location
     state["target"] = target
     state["freq_hz"] = freq_hz
     state["lat"] = lat
     state["lon"] = lon
-    state["times_fine"] = times_fine
-    state["dt_list"] = dt_list
+    state["times_fine"] = times_fine_utc
+    state["dt_list_utc"] = dt_list_utc
     state["alt"] = alt
     state["az"] = az
     state["r_dist"] = r_dist
     state["hourly"] = hourly
 
-    times_extended = Time(date_str) + np.arange(0, 32 * 60, 1) * u.minute
-    altaz_extended = target.transform_to(AltAz(obstime=times_extended, location=location))
+    times_extended_utc = Time(date_str_utc, scale='utc') + np.arange(0, 32 * 60, 1) * u.minute
+    altaz_extended = target.transform_to(AltAz(obstime=times_extended_utc, location=location))
     alt_ext = altaz_extended.alt.deg
-    dt_ext = np.array([t.to_datetime() for t in times_extended])
+    dt_ext_utc = np.array([t.to_datetime(timezone=datetime.timezone.utc) for t in times_extended_utc])
 
     above_horizon_indices = np.where(alt > 0)[0]
+
+    tz_name = dt_list_utc[0].astimezone(local_tz).strftime('%Z') or "Local Time"
 
     term_text = f" SKY PATH FOR {target_name}\n"
     term_text += f" Target Frequency  : {freq_hz / 1.0e6:.1f} MHz (Auto-selected)\n"
@@ -296,28 +204,34 @@ def show_path(event=None):
 
     if len(above_horizon_indices) > 0:
         max_alt_idx = np.argmax(alt)
-        rise_time = dt_list[above_horizon_indices[0]]
-        peak_time = dt_list[max_alt_idx]
+        rise_dt_utc = dt_list_utc[above_horizon_indices[0]]
+        peak_dt_utc = dt_list_utc[max_alt_idx]
+
+        # Convert rise/peak times to local timezone for user presentation
+        rise_local = rise_dt_utc.astimezone(local_tz)
+        peak_local = peak_dt_utc.astimezone(local_tz)
 
         max_ext_idx = np.argmax(alt_ext)
         post_peak_below = np.where((alt_ext <= 0) & (np.arange(len(alt_ext)) > max_ext_idx))[0]
         
         if len(post_peak_below) > 0:
-            set_time = dt_ext[post_peak_below[0]]
-            if set_time.day != dt_list[0].day:
-                set_str = f"{set_time.strftime('%H:%M')} UTC (+1 day)"
+            set_dt_utc = dt_ext_utc[post_peak_below[0]]
+            set_local = set_dt_utc.astimezone(local_tz)
+            if set_local.day != rise_local.day:
+                set_str = f"{set_local.strftime('%H:%M')} {tz_name} (+1 day)"
             else:
-                set_str = f"{set_time.strftime('%H:%M')} UTC"
+                set_str = f"{set_local.strftime('%H:%M')} {tz_name}"
         else:
-            set_str = "--:-- UTC"
+            set_str = f"--:-- {tz_name}"
 
-        term_text += f"Rises Above Horizon : {rise_time.strftime('%H:%M UTC')}\n"
-        term_text += f"Peak Altitude       : {alt[max_alt_idx]:.2f} deg at {peak_time.strftime('%H:%M UTC')}\n"
+        term_text += f"Rises Above Horizon : {rise_local.strftime('%H:%M')} {tz_name} ({rise_dt_utc.strftime('%H:%M')} UTC)\n"
+        term_text += f"Peak Altitude       : {alt[max_alt_idx]:.2f} deg at {peak_local.strftime('%H:%M')} {tz_name} ({peak_dt_utc.strftime('%H:%M')} UTC)\n"
         term_text += f"Sets Below Horizon  : {set_str}\n\n"
-        term_text += "Enter observing window below and click Calculate Wire Orientation.\n"
+        term_text += "Enter observing window below (UTC) and click Calculate Wire Orientation.\n"
         
-        document.getElementById("obsStartInput").value = f"{dt_list[0].strftime('%Y-%m-%d')} {rise_time.strftime('%H:%M:%S')}"
-        document.getElementById("obsEndInput").value = f"{dt_list[0].strftime('%Y-%m-%d')} {peak_time.strftime('%H:%M:%S')}"
+        # Populate step 2 inputs (kept in UTC for explicit precision)
+        document.getElementById("obsStartInput").value = f"{dt_list_utc[0].strftime('%Y-%m-%d')} {rise_dt_utc.strftime('%H:%M:%S')}"
+        document.getElementById("obsEndInput").value = f"{dt_list_utc[0].strftime('%Y-%m-%d')} {peak_dt_utc.strftime('%H:%M:%S')}"
         
         document.getElementById("window-controls").classList.remove("hidden")
     else:
@@ -331,12 +245,12 @@ def optimize_window(event=None):
         document.getElementById("terminal-out").innerText = "Click 'Calculate Horizon Track' first."
         return
 
-    obs_start_str = parse_user_date(document.getElementById("obsStartInput").value)
-    obs_end_str = parse_user_date(document.getElementById("obsEndInput").value)
+    obs_start_str = parse_user_date_to_utc(document.getElementById("obsStartInput").value)
+    obs_end_str = parse_user_date_to_utc(document.getElementById("obsEndInput").value)
 
     try:
-        observe_start = Time(obs_start_str)
-        observe_end = Time(obs_end_str)
+        observe_start_utc = Time(obs_start_str, scale='utc')
+        observe_end_utc = Time(obs_end_str, scale='utc')
     except Exception:
         document.getElementById("terminal-out").innerText = "Error parsing times. Use format YYYY-MM-DD HH:MM:SS (UTC)."
         return
@@ -347,15 +261,22 @@ def optimize_window(event=None):
     freq_hz = state["freq_hz"]
     lat, lon = state["lat"], state["lon"]
 
-    times = observe_start + np.arange(0, max(1, int((observe_end - observe_start).to(u.minute).value)), 5) * u.minute
-    altaz = target.transform_to(AltAz(obstime=times, location=location))
+    # Compute orientation metrics strictly in UTC
+    times_utc = observe_start_utc + np.arange(0, max(1, int((observe_end_utc - observe_start_utc).to(u.minute).value)), 5) * u.minute
+    altaz = target.transform_to(AltAz(obstime=times_utc, location=location))
 
     visible_mask = altaz.alt.deg > 0
+
+    local_tz = get_user_timezone()
+    start_dt_local = observe_start_utc.to_datetime(timezone=datetime.timezone.utc).astimezone(local_tz)
+    end_dt_local = observe_end_utc.to_datetime(timezone=datetime.timezone.utc).astimezone(local_tz)
+    tz_name = start_dt_local.strftime('%Z') or "Local"
 
     term_text = f" OPTIMAL WIRE ORIENTATION FOR {target_name} DURING YOUR OBSERVING WINDOW\n"
     term_text += f" Target Frequency  : {freq_hz / 1.0e6:.1f} MHz (Auto-selected)\n"
     term_text += f" Observer Location : {lat:.2f} deg, {lon:.2f} deg\n"
-    term_text += f" Observing Window (UTC): {observe_start.iso} to {observe_end.iso}\n\n"
+    term_text += f" Window (Local)    : {start_dt_local.strftime('%Y-%m-%d %H:%M')} to {end_dt_local.strftime('%H:%M %Z')}\n"
+    term_text += f" Window (UTC)      : {observe_start_utc.iso} to {observe_end_utc.iso}\n\n"
 
     if not np.any(visible_mask):
         term_text += f"WARNING: {target_name} is NOT above the horizon during your chosen observing window.\n"
@@ -396,9 +317,6 @@ def optimize_window(event=None):
     term_text += f" Wire 2 Angle    : {best_w2_angle} deg from North\n"
 
     document.getElementById("terminal-out").innerText = term_text
-    draw_track(highlight_start=observe_start, highlight_end=observe_end)
+    draw_track(highlight_start_utc=observe_start_utc, highlight_end_utc=observe_end_utc)
 
 document.getElementById("terminal-out").innerText = "Detecting location... Select target, date, and click 'Calculate Horizon Track'."
-  </script>
-</body>
-</html>
