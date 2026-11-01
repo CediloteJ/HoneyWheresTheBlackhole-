@@ -18,22 +18,8 @@
     window.userLat = null;
     window.userLon = null;
 
-    const DEFAULT_FREQS = {
-      "Sgr A*": "20.1",
-      "M87*": "408.0",
-      "Cyg X-1": "1420.0",
-      "Cas A": "80.0"
-    };
-
-    function updateDefaultFreq() {
-      const target = document.getElementById("targetSelect").value;
-      const freqInput = document.getElementById("freqInput");
-      if (freqInput && DEFAULT_FREQS[target]) {
-        freqInput.value = DEFAULT_FREQS[target];
-      }
-    }
-
     function initUserContext() {
+      // Auto-set date input to user's current local date (YYYY-MM-DD)
       const dateInput = document.getElementById("dateTimeInput");
       if (dateInput) {
         const today = new Date();
@@ -43,8 +29,7 @@
         dateInput.value = `${year}-${month}-${day}`;
       }
 
-      updateDefaultFreq();
-
+      // Obtain geolocation
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
@@ -73,12 +58,12 @@
       <p class="text-gray-400 text-sm">Dipole Array & Horizon Tracking for Black Holes & Deep Sky Radio Sources</p>
     </header>
 
-    <!-- STEP 1: Inputs and Centered Action Button inside the first box -->
+    <!-- STEP 1: Automated Target & Date Inputs + Centered Button -->
     <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 flex flex-col items-center gap-6">
-      <div class="flex flex-wrap items-center justify-center gap-4 w-full">
+      <div class="flex flex-wrap items-center justify-center gap-6 w-full">
         <div class="flex items-center gap-2">
           <label for="targetSelect" class="font-medium text-gray-300 whitespace-nowrap">Target:</label>
-          <select id="targetSelect" onchange="updateDefaultFreq()" class="bg-gray-700 border border-gray-600 px-3 py-2 rounded text-white font-mono">
+          <select id="targetSelect" class="bg-gray-700 border border-gray-600 px-3 py-2 rounded text-white font-mono">
             <option value="Sgr A*">Sagittarius A* (Supermassive Black Hole)</option>
             <option value="M87*">M87* (Supermassive Black Hole)</option>
             <option value="Cyg X-1">Cygnus X-1 (Stellar-Mass BH)</option>
@@ -87,17 +72,12 @@
         </div>
 
         <div class="flex items-center gap-2">
-          <label for="freqInput" class="font-medium text-gray-300 whitespace-nowrap">Freq (MHz):</label>
-          <input type="number" id="freqInput" step="0.1" class="bg-gray-700 border border-gray-600 px-3 py-2 rounded text-white font-mono w-28">
-        </div>
-
-        <div class="flex items-center gap-2">
           <label for="dateTimeInput" class="font-medium text-gray-300 whitespace-nowrap">Date:</label>
           <input type="date" id="dateTimeInput" class="bg-gray-700 border border-gray-600 px-3 py-2 rounded text-white font-mono">
         </div>
       </div>
 
-      <!-- Centered Button -->
+      <!-- Centered Calculate Button -->
       <button id="path-btn" py-click="show_path" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 px-8 rounded-lg transition duration-200 shadow-md">
         Calculate Horizon Track
       </button>
@@ -156,11 +136,12 @@ c = 3.0e8
 LAT_DEFAULT = 34.20
 LON_DEFAULT = -79.76
 
+# Target coordinates mapped directly to auto-selected radio frequencies (in Hz)
 TARGET_COORDINATES = {
-    "Sgr A*":  {"ra": "17h45m40.0409s", "dec": "-29d00m28.118s"},
-    "M87*":    {"ra": "12h30m49.4234s", "dec": "+12d23m28.043s"},
-    "Cyg X-1": {"ra": "19h58m21.6756s", "dec": "+35d12m05.784s"},
-    "Cas A":   {"ra": "23h23m24.0000s", "dec": "+58d48m54.000s"}
+    "Sgr A*":  {"ra": "17h45m40.0409s", "dec": "-29d00m28.118s", "freq_hz": 20.1e6},   # 20.1 MHz
+    "M87*":    {"ra": "12h30m49.4234s", "dec": "+12d23m28.043s", "freq_hz": 408.0e6},  # 408 MHz
+    "Cyg X-1": {"ra": "19h58m21.6756s", "dec": "+35d12m05.784s", "freq_hz": 1.42e9},   # 1420 MHz (21cm HI Line)
+    "Cas A":   {"ra": "23h23m24.0000s", "dec": "+58d48m54.000s", "freq_hz": 80.0e6}    # 80 MHz
 }
 
 state = {}
@@ -267,12 +248,6 @@ def show_path(event=None):
     raw_date = document.getElementById("dateTimeInput").value
     date_str = parse_user_date(raw_date)
 
-    try:
-        freq_mhz = float(document.getElementById("freqInput").value)
-    except (ValueError, TypeError):
-        freq_mhz = 20.1
-    freq_hz = freq_mhz * 1.0e6
-
     if hasattr(window, 'userLat') and window.userLat is not None and hasattr(window, 'userLon') and window.userLon is not None:
         lat = float(window.userLat)
         lon = float(window.userLon)
@@ -281,8 +256,10 @@ def show_path(event=None):
 
     location = EarthLocation(lat=lat * u.deg, lon=lon * u.deg, height=0 * u.m)
     
+    # Target lookup with automatic frequency setting
     coords = TARGET_COORDINATES[target_name]
     target = SkyCoord(ra=coords["ra"], dec=coords["dec"], frame='icrs')
+    freq_hz = coords["freq_hz"]
 
     times_fine = Time(date_str) + np.arange(0, 24 * 60, 1) * u.minute
     dt_list = np.array([t.to_datetime() for t in times_fine])
@@ -314,7 +291,7 @@ def show_path(event=None):
     above_horizon_indices = np.where(alt > 0)[0]
 
     term_text = f" SKY PATH FOR {target_name}\n"
-    term_text += f" Target Frequency  : {freq_mhz:.1f} MHz\n"
+    term_text += f" Target Frequency  : {freq_hz / 1.0e6:.1f} MHz (Auto-selected)\n"
     term_text += f" Observer Location : {lat:.2f} deg, {lon:.2f} deg\n\n"
 
     if len(above_horizon_indices) > 0:
@@ -376,7 +353,7 @@ def optimize_window(event=None):
     visible_mask = altaz.alt.deg > 0
 
     term_text = f" OPTIMAL WIRE ORIENTATION FOR {target_name} DURING YOUR OBSERVING WINDOW\n"
-    term_text += f" Target Frequency  : {freq_hz / 1.0e6:.1f} MHz\n"
+    term_text += f" Target Frequency  : {freq_hz / 1.0e6:.1f} MHz (Auto-selected)\n"
     term_text += f" Observer Location : {lat:.2f} deg, {lon:.2f} deg\n"
     term_text += f" Observing Window (UTC): {observe_start.iso} to {observe_end.iso}\n\n"
 
