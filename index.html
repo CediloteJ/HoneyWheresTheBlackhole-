@@ -19,7 +19,7 @@
     window.userLon = null;
 
     function initUserContext() {
-      // 1. Auto-set date input to the user's current local date (YYYY-MM-DD)
+      // Auto-set date input to user's current local date (YYYY-MM-DD)
       const dateInput = document.getElementById("dateTimeInput");
       if (dateInput) {
         const today = new Date();
@@ -29,7 +29,7 @@
         dateInput.value = `${year}-${month}-${day}`;
       }
 
-      // 2. Obtain user geolocation
+      // Obtain user geolocation
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
@@ -47,7 +47,6 @@
       }
     }
 
-    // Trigger context initialization on DOM load
     window.addEventListener("DOMContentLoaded", initUserContext);
   </script>
 </head>
@@ -59,21 +58,26 @@
       <p class="text-gray-400 text-sm">Dipole Array & Horizon Tracking for Black Holes & Deep Sky Radio Sources</p>
     </header>
 
-    <!-- STEP 1: Target, Date & Location Inputs -->
-    <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 flex flex-col md:flex-row items-center justify-between gap-4">
-      <div class="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
-        <label for="targetSelect" class="font-medium text-gray-300 whitespace-nowrap">Target:</label>
-        <select id="targetSelect" class="bg-gray-700 border border-gray-600 px-3 py-2 rounded text-white font-mono w-full md:w-auto">
-          <option value="Sgr A*">Sagittarius A* (Supermassive Black Hole)</option>
-          <option value="M87*">M87* (Supermassive Black Hole)</option>
-          <option value="Cyg X-1">Cygnus X-1 (Stellar-Mass BH)</option>
-          <option value="Cas A">Cassiopeia A (Radio Supernova)</option>
-        </select>
+    <!-- STEP 1: Target, Date & Location Inputs + Calculate Button inside same flex box -->
+    <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 flex flex-col lg:flex-row items-center justify-between gap-4">
+      <div class="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
+        <div class="flex items-center gap-2 w-full sm:w-auto">
+          <label for="targetSelect" class="font-medium text-gray-300 whitespace-nowrap">Target:</label>
+          <select id="targetSelect" class="bg-gray-700 border border-gray-600 px-3 py-2 rounded text-white font-mono w-full sm:w-auto">
+            <option value="Sgr A*">Sagittarius A* (Supermassive Black Hole)</option>
+            <option value="M87*">M87* (Supermassive Black Hole)</option>
+            <option value="Cyg X-1">Cygnus X-1 (Stellar-Mass BH)</option>
+            <option value="Cas A">Cassiopeia A (Radio Supernova)</option>
+          </select>
+        </div>
 
-        <label for="dateTimeInput" class="font-medium text-gray-300 whitespace-nowrap">Date (Local/UTC):</label>
-        <input type="date" id="dateTimeInput" class="bg-gray-700 border border-gray-600 px-3 py-2 rounded text-white font-mono w-full md:w-auto">
+        <div class="flex items-center gap-2 w-full sm:w-auto">
+          <label for="dateTimeInput" class="font-medium text-gray-300 whitespace-nowrap">Date:</label>
+          <input type="date" id="dateTimeInput" class="bg-gray-700 border border-gray-600 px-3 py-2 rounded text-white font-mono w-full sm:w-auto">
+        </div>
       </div>
-      <button id="path-btn" py-click="show_path" class="w-full md:w-auto bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition duration-200">
+
+      <button id="path-btn" py-click="show_path" class="w-full lg:w-auto bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition duration-200 whitespace-nowrap">
         Calculate Horizon Track
       </button>
     </div>
@@ -119,25 +123,24 @@ from astropy.utils.exceptions import AstropyWarning
 from astropy.utils.iers import iers
 from pyscript import document, display, window
 
-# Disable online IERS downloads & suppress PyScript warning banners
 iers.conf.auto_download = False
 iers.conf.auto_max_age = None
 warnings.simplefilter('ignore', category=AstropyWarning)
 warnings.filterwarnings('ignore')
 
 h_meters = 3.0
-freq_hz = 20.1e6
 c = 3.0e8
 
-# Default observer location (Florence, SC fallback)
+# Default observer location (Florence, SC)
 LAT_DEFAULT = 34.20
 LON_DEFAULT = -79.76
 
+# Target coordinates along with object-specific primary radio frequencies
 TARGET_COORDINATES = {
-    "Sgr A*":  {"ra": "17h45m40.0409s", "dec": "-29d00m28.118s"},
-    "M87*":    {"ra": "12h30m49.4234s", "dec": "+12d23m28.043s"},
-    "Cyg X-1": {"ra": "19h58m21.6756s", "dec": "+35d12m05.784s"},
-    "Cas A":   {"ra": "23h23m24.0000s", "dec": "+58d48m54.000s"}
+    "Sgr A*":  {"ra": "17h45m40.0409s", "dec": "-29d00m28.118s", "freq_hz": 20.1e6},   # Radio JOVE HF band (20.1 MHz)
+    "M87*":    {"ra": "12h30m49.4234s", "dec": "+12d23m28.043s", "freq_hz": 408.0e6},  # Continuum Radio Sky (408 MHz)
+    "Cyg X-1": {"ra": "19h58m21.6756s", "dec": "+35d12m05.784s", "freq_hz": 1.42e9},   # 21cm Hydrogen Line (1.42 GHz)
+    "Cas A":   {"ra": "23h23m24.0000s", "dec": "+58d48m54.000s", "freq_hz": 80.0e6}    # Supernova Remnant Low-HF/VHF (80 MHz)
 }
 
 state = {}
@@ -244,7 +247,6 @@ def show_path(event=None):
     raw_date = document.getElementById("dateTimeInput").value
     date_str = parse_user_date(raw_date)
 
-    # Use browser-detected location if available; otherwise default to Florence, SC
     if hasattr(window, 'userLat') and window.userLat is not None and hasattr(window, 'userLon') and window.userLon is not None:
         lat = float(window.userLat)
         lon = float(window.userLon)
@@ -268,6 +270,7 @@ def show_path(event=None):
     state["date_str"] = date_str
     state["location"] = location
     state["target"] = target
+    state["freq_hz"] = coords["freq_hz"]
     state["lat"] = lat
     state["lon"] = lon
     state["times_fine"] = times_fine
@@ -284,7 +287,9 @@ def show_path(event=None):
 
     above_horizon_indices = np.where(alt > 0)[0]
 
+    freq_mhz = coords["freq_hz"] / 1.0e6
     term_text = f" SKY PATH FOR {target_name}\n"
+    term_text += f" Target Frequency  : {freq_mhz:.1f} MHz\n"
     term_text += f" Observer Location : {lat:.2f} deg, {lon:.2f} deg\n\n"
 
     if len(above_horizon_indices) > 0:
@@ -337,6 +342,7 @@ def optimize_window(event=None):
     location = state["location"]
     target = state["target"]
     target_name = state["target_name"]
+    freq_hz = state["freq_hz"]
     lat, lon = state["lat"], state["lon"]
 
     times = observe_start + np.arange(0, max(1, int((observe_end - observe_start).to(u.minute).value)), 5) * u.minute
@@ -345,6 +351,7 @@ def optimize_window(event=None):
     visible_mask = altaz.alt.deg > 0
 
     term_text = f" OPTIMAL WIRE ORIENTATION FOR {target_name} DURING YOUR OBSERVING WINDOW\n"
+    term_text += f" Target Frequency  : {freq_hz / 1.0e6:.1f} MHz\n"
     term_text += f" Observer Location : {lat:.2f} deg, {lon:.2f} deg\n"
     term_text += f" Observing Window (UTC): {observe_start.iso} to {observe_end.iso}\n\n"
 
