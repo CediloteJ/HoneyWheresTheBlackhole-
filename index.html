@@ -16,8 +16,6 @@
   <script>
     window.userLat = null;
     window.userLon = null;
-    window.userTzOffsetMinutes = new Date().getTimezoneOffset(); // UTC offset in minutes
-    window.userTzName = Intl.DateTimeFormat().resolvedOptions().timeZone || "Local";
 
     function initUserContext() {
       const dateInput = document.getElementById("dateTimeInput");
@@ -40,7 +38,7 @@
             }
           },
           (error) => {
-            console.warn("Geolocation denied or unavailable. Using default location.");
+            console.warn("Geolocation denied or unavailable.");
           }
         );
       }
@@ -140,17 +138,9 @@ TARGET_COORDINATES = {
 
 state = {}
 
-def get_user_timezone_info():
-    """Retrieve exact local timezone offset and name explicitly from JS browser runtime."""
-    try:
-        offset_minutes = int(window.userTzOffsetMinutes)
-        tz_name = str(window.userTzName)
-        # JS getTimezoneOffset() returns minutes WEST of UTC (e.g. +300 for UTC-5),
-        # so negate it to construct standard Python timedelta timezone.
-        local_tz = datetime.timezone(datetime.timedelta(minutes=-offset_minutes))
-        return local_tz, tz_name
-    except Exception:
-        return datetime.timezone.utc, "UTC"
+# Fixed to Eastern Standard Time (EST / UTC-5)
+LOCAL_TZ = datetime.timezone(datetime.timedelta(hours=-5))
+TZ_NAME = "EST"
 
 def parse_user_date_to_utc(raw_input):
     raw = raw_input.strip()
@@ -168,12 +158,10 @@ def parse_user_date_to_utc(raw_input):
     return f"{date_part} {time_part}"
 
 def draw_track(highlight_start_utc=None, highlight_end_utc=None):
-    local_tz, tz_name = get_user_timezone_info()
     dt_list_utc = state["dt_list_utc"]
     
-    # All astronomical calculations are completed in UTC.
-    # Convert UTC datetimes to explicit local timezone strictly for plotting array.
-    dt_list_local = [dt.replace(tzinfo=datetime.timezone.utc).astimezone(local_tz) for dt in dt_list_utc]
+    # All calculations stay in UTC; datetime list converted to EST for plot display
+    dt_list_local = [dt.replace(tzinfo=datetime.timezone.utc).astimezone(LOCAL_TZ) for dt in dt_list_utc]
 
     alt = state["alt"]
     az = state["az"]
@@ -225,27 +213,27 @@ def draw_track(highlight_start_utc=None, highlight_end_utc=None):
     display(fig1, target="plot1-out")
     plt.close(fig1)
 
-    # 2. Altitude vs. Local Time Plot
+    # 2. Altitude vs. Local Time Plot (EST)
     fig2, ax2 = plt.subplots(figsize=(8, 4))
     ax2.plot(dt_list_local, alt, color='#3b82f6', lw=2, label=f'{target_name}')
     ax2.axhline(0, color='red', linestyle='--', label='Horizon')
 
     if highlight_start_utc is not None:
-        start_local = highlight_start_utc.to_datetime(timezone=datetime.timezone.utc).astimezone(local_tz)
-        end_local = highlight_end_utc.to_datetime(timezone=datetime.timezone.utc).astimezone(local_tz)
+        start_local = highlight_start_utc.to_datetime(timezone=datetime.timezone.utc).astimezone(LOCAL_TZ)
+        end_local = highlight_end_utc.to_datetime(timezone=datetime.timezone.utc).astimezone(LOCAL_TZ)
         ax2.axvspan(start_local, end_local, color='orange', alpha=0.25, label='Your window')
 
     for i in np.where(hourly & (alt > 0))[0]:
         ax2.annotate(dt_list_local[i].strftime('%H:%M'), (dt_list_local[i], alt[i]),
                      textcoords="offset points", xytext=(0, 6), ha='center', fontsize=8)
 
-    ax2.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M', tz=local_tz))
-    ax2.xaxis.set_major_locator(mdates.HourLocator(interval=2, tz=local_tz))
+    ax2.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M', tz=LOCAL_TZ))
+    ax2.xaxis.set_major_locator(mdates.HourLocator(interval=2, tz=LOCAL_TZ))
     ax2.set_xlim(dt_list_local[0], dt_list_local[-1])
     fig2.autofmt_xdate()
 
-    ax2.set_title(f'{target_name} Altitude vs. Local Time ({tz_name})', color='white')
-    ax2.set_xlabel(f'Local Time ({tz_name})')
+    ax2.set_title(f'{target_name} Altitude vs. Eastern Standard Time ({TZ_NAME})', color='white')
+    ax2.set_xlabel(f'Local Time ({TZ_NAME})')
     ax2.set_ylabel('Altitude (degrees)')
     ax2.set_ylim(-90, max(max(alt) + 15, 25))
     ax2.fill_between(dt_list_local, alt, 0, where=(alt <= 0), color='gray', alpha=0.3, label='Below Horizon')
@@ -259,7 +247,6 @@ def show_path(event=None):
     document.getElementById("terminal-out").innerText = "Running astronomical calculations..."
     document.getElementById("window-controls").classList.add("hidden")
 
-    local_tz, tz_name = get_user_timezone_info()
     target_name = document.getElementById("targetSelect").value
     raw_date = document.getElementById("dateTimeInput").value
     date_str_utc = parse_user_date_to_utc(raw_date)
@@ -270,7 +257,6 @@ def show_path(event=None):
     else:
         lat, lon = LAT_DEFAULT, LON_DEFAULT
 
-    # Astropy location & transform executed strictly in UTC
     location = EarthLocation(lat=lat * u.deg, lon=lon * u.deg, height=0 * u.m)
     coords = TARGET_COORDINATES[target_name]
     target = SkyCoord(ra=coords["ra"], dec=coords["dec"], frame='icrs')
@@ -314,24 +300,24 @@ def show_path(event=None):
         rise_dt_utc = dt_list_utc[above_horizon_indices[0]]
         peak_dt_utc = dt_list_utc[max_alt_idx]
 
-        rise_local = rise_dt_utc.astimezone(local_tz)
-        peak_local = peak_dt_utc.astimezone(local_tz)
+        rise_local = rise_dt_utc.astimezone(LOCAL_TZ)
+        peak_local = peak_dt_utc.astimezone(LOCAL_TZ)
 
         max_ext_idx = np.argmax(alt_ext)
         post_peak_below = np.where((alt_ext <= 0) & (np.arange(len(alt_ext)) > max_ext_idx))[0]
         
         if len(post_peak_below) > 0:
             set_dt_utc = dt_ext_utc[post_peak_below[0]]
-            set_local = set_dt_utc.astimezone(local_tz)
+            set_local = set_dt_utc.astimezone(LOCAL_TZ)
             if set_local.day != rise_local.day:
-                set_str = f"{set_local.strftime('%H:%M')} {tz_name} (+1 day)"
+                set_str = f"{set_local.strftime('%H:%M')} {TZ_NAME} (+1 day)"
             else:
-                set_str = f"{set_local.strftime('%H:%M')} {tz_name}"
+                set_str = f"{set_local.strftime('%H:%M')} {TZ_NAME}"
         else:
-            set_str = f"--:-- {tz_name}"
+            set_str = f"--:-- {TZ_NAME}"
 
-        term_text += f"Rises Above Horizon : {rise_local.strftime('%H:%M')} {tz_name} ({rise_dt_utc.strftime('%H:%M')} UTC)\n"
-        term_text += f"Peak Altitude       : {alt[max_alt_idx]:.2f}° at {peak_local.strftime('%H:%M')} {tz_name} ({peak_dt_utc.strftime('%H:%M')} UTC)\n"
+        term_text += f"Rises Above Horizon : {rise_local.strftime('%H:%M')} {TZ_NAME} ({rise_dt_utc.strftime('%H:%M')} UTC)\n"
+        term_text += f"Peak Altitude       : {alt[max_alt_idx]:.2f}° at {peak_local.strftime('%H:%M')} {TZ_NAME} ({peak_dt_utc.strftime('%H:%M')} UTC)\n"
         term_text += f"Sets Below Horizon  : {set_str}\n\n"
         term_text += "Enter observing window below (UTC) and click Calculate Wire Orientation.\n"
         
@@ -371,14 +357,13 @@ def optimize_window(event=None):
 
     visible_mask = altaz.alt.deg > 0
 
-    local_tz, tz_name = get_user_timezone_info()
-    start_dt_local = observe_start_utc.to_datetime(timezone=datetime.timezone.utc).astimezone(local_tz)
-    end_dt_local = observe_end_utc.to_datetime(timezone=datetime.timezone.utc).astimezone(local_tz)
+    start_dt_local = observe_start_utc.to_datetime(timezone=datetime.timezone.utc).astimezone(LOCAL_TZ)
+    end_dt_local = observe_end_utc.to_datetime(timezone=datetime.timezone.utc).astimezone(LOCAL_TZ)
 
     term_text = f" OPTIMAL WIRE ORIENTATION FOR {target_name} DURING YOUR OBSERVING WINDOW\n"
     term_text += f" Target Frequency   : {freq_hz / 1.0e6:.1f} MHz (Auto-selected)\n"
     term_text += f" Observer Location : {lat:.2f}°, {lon:.2f}°\n"
-    term_text += f" Window (Local)    : {start_dt_local.strftime('%Y-%m-%d %H:%M')} to {end_dt_local.strftime('%H:%M %Z')}\n"
+    term_text += f" Window (EST)      : {start_dt_local.strftime('%Y-%m-%d %H:%M')} to {end_dt_local.strftime('%H:%M EST')}\n"
     term_text += f" Window (UTC)      : {observe_start_utc.iso} to {observe_end_utc.iso}\n\n"
 
     if not np.any(visible_mask):
