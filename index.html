@@ -149,7 +149,7 @@ TARGET_COORDINATES = {
 state = {}
 
 def get_user_timezone():
-    """Detect local timezone from browser JS or fallback to system local."""
+    """Detect local timezone dynamically from browser JS runtime."""
     try:
         tz_str = window.Intl.DateTimeFormat().resolvedOptions().timeZone
         return ZoneInfo(tz_str)
@@ -176,7 +176,7 @@ def draw_track(highlight_start_utc=None, highlight_end_utc=None):
     local_tz = get_user_timezone()
     dt_list_utc = state["dt_list_utc"]
     
-    # Convert UTC datetimes to local time zone specifically for plotting
+    # Convert UTC datetimes specifically for local time plotting
     dt_list_local = [dt.replace(tzinfo=datetime.timezone.utc).astimezone(local_tz) for dt in dt_list_utc]
     tz_name = dt_list_local[0].strftime('%Z') or "Local"
 
@@ -199,7 +199,7 @@ def draw_track(highlight_start_utc=None, highlight_end_utc=None):
     fig1 = plt.figure(figsize=(7, 7), facecolor='black')
     ax1 = fig1.add_subplot(111, polar=True, facecolor='#001144')
     ax1.set_theta_zero_location('N')
-    ax1.set_theta_direction(-1)  # Clockwise orientation N -> E -> S -> W
+    ax1.set_theta_direction(-1)  # Clockwise: N -> E -> S -> W
     ax1.set_ylim(0, 90)
     ax1.set_yticks([0, 30, 60, 90])
     ax1.set_yticklabels(['90°', '60°', '30°', '0°'], color='#888888', fontsize=8)
