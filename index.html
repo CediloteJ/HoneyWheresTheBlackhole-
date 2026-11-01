@@ -55,19 +55,20 @@
   <div class="max-w-4xl mx-auto space-y-6">
     <header class="text-center space-y-2">
       <h1 class="text-3xl font-bold text-yellow-400">Honey, where's the black hole?</h1>
-      <p class="text-gray-400 text-sm">Dipole Array & Horizon Tracking for Black Holes & Deep Sky Radio Sources</p>
+      <p class="text-gray-400 text-sm">Dipole Array & Horizon Tracking for Deep Sky Radio Sources</p>
     </header>
 
-    <!-- STEP 1: Target & Date Inputs (NO FREQUENCY INPUT) -->
+    <!-- STEP 1: Target & Date Inputs -->
     <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 flex flex-col items-center gap-6">
       <div class="flex flex-wrap items-center justify-center gap-6 w-full">
         <div class="flex items-center gap-2">
           <label for="targetSelect" class="font-medium text-gray-300 whitespace-nowrap">Target:</label>
           <select id="targetSelect" class="bg-gray-700 border border-gray-600 px-3 py-2 rounded text-white font-mono">
-            <option value="Sgr A*">Sagittarius A* (Supermassive Black Hole)</option>
+            <option value="Sgr A*">Sagittarius A* (Galactic Center SMBH)</option>
             <option value="M87*">M87* (Supermassive Black Hole)</option>
-            <option value="Cyg X-1">Cygnus X-1 (Stellar-Mass BH)</option>
-            <option value="Cas A">Cassiopeia A (Radio Supernova)</option>
+            <option value="Cyg A">Cygnus A (Radio Galaxy)</option>
+            <option value="Tau A">Taurus A (Crab Nebula / Supernova Remnant)</option>
+            <option value="Cas A">Cassiopeia A (Supernova Remnant)</option>
           </select>
         </div>
 
@@ -83,7 +84,7 @@
       </button>
     </div>
 
-    <!-- Output Terminal: Frequency is output strictly here -->
+    <!-- Output Terminal -->
     <div class="bg-black p-6 rounded-xl border border-gray-800 font-mono text-green-400 shadow-2xl overflow-x-auto whitespace-pre">
       <div id="terminal-out">Detecting location... Select a target, date, and click 'Calculate Horizon Track'...</div>
     </div>
@@ -140,7 +141,8 @@ LON_DEFAULT = -79.76
 TARGET_COORDINATES = {
     "Sgr A*":  {"ra": "17h45m40.0409s", "dec": "-29d00m28.118s", "freq_hz": 20.1e6},
     "M87*":    {"ra": "12h30m49.4234s", "dec": "+12d23m28.043s", "freq_hz": 408.0e6},
-    "Cyg X-1": {"ra": "19h58m21.6756s", "dec": "+35d12m05.784s", "freq_hz": 1.42e9},
+    "Cyg A":   {"ra": "19h59m28.3566s", "dec": "+40d44m02.096s", "freq_hz": 1.40e9},
+    "Tau A":   {"ra": "05h34m31.9400s", "dec": "+22d00m52.100s", "freq_hz": 1.40e9},
     "Cas A":   {"ra": "23h23m24.0000s", "dec": "+58d48m54.000s", "freq_hz": 80.0e6}
 }
 
@@ -152,7 +154,7 @@ def get_user_timezone():
         tz_str = window.Intl.DateTimeFormat().resolvedOptions().timeZone
         return ZoneInfo(tz_str)
     except Exception:
-        return datetime.datetime.now().astimezone().tzinfo
+        return datetime.timezone.utc
 
 def parse_user_date_to_utc(raw_input):
     """Parses input string into a naive UTC string format."""
@@ -197,10 +199,10 @@ def draw_track(highlight_start_utc=None, highlight_end_utc=None):
     fig1 = plt.figure(figsize=(7, 7), facecolor='black')
     ax1 = fig1.add_subplot(111, polar=True, facecolor='#001144')
     ax1.set_theta_zero_location('N')
-    ax1.set_theta_direction(1)
+    ax1.set_theta_direction(-1)  # Clockwise orientation N -> E -> S -> W
     ax1.set_ylim(0, 90)
-    ax1.set_yticks([30, 60, 90])
-    ax1.set_yticklabels(['', '', ''])
+    ax1.set_yticks([0, 30, 60, 90])
+    ax1.set_yticklabels(['90°', '60°', '30°', '0°'], color='#888888', fontsize=8)
     ax1.grid(color='#4466aa', linestyle='--', linewidth=0.8)
     ax1.set_xticks(np.radians([0, 90, 180, 270]))
     ax1.set_xticklabels(['N', 'E', 'S', 'W'], color='yellow', fontsize=12, fontweight='bold')
@@ -223,7 +225,7 @@ def draw_track(highlight_start_utc=None, highlight_end_utc=None):
                      textcoords='offset points', ha='center', color='yellow', fontsize=9)
 
     ax1.legend(loc='upper right', bbox_to_anchor=(1.35, 1.1), facecolor='black', labelcolor='white', fontsize=8)
-    plt.title(f"Sky Track for {target_name}\n({lat:.2f} deg, {lon:.2f} deg)", color='white', pad=15)
+    plt.title(f"Sky Track for {target_name}\n({lat:.2f}°, {lon:.2f}°)", color='white', pad=15)
     plt.tight_layout()
     display(fig1, target="plot1-out")
     plt.close(fig1)
@@ -311,8 +313,8 @@ def show_path(event=None):
     tz_name = dt_list_utc[0].astimezone(local_tz).strftime('%Z') or "Local Time"
 
     term_text = f" SKY PATH FOR {target_name}\n"
-    term_text += f" Target Frequency  : {freq_hz / 1.0e6:.1f} MHz (Auto-selected)\n"
-    term_text += f" Observer Location : {lat:.2f} deg, {lon:.2f} deg\n\n"
+    term_text += f" Target Frequency   : {freq_hz / 1.0e6:.1f} MHz (Auto-selected)\n"
+    term_text += f" Observer Location : {lat:.2f}°, {lon:.2f}°\n\n"
 
     if len(above_horizon_indices) > 0:
         max_alt_idx = np.argmax(alt)
@@ -336,12 +338,12 @@ def show_path(event=None):
             set_str = f"--:-- {tz_name}"
 
         term_text += f"Rises Above Horizon : {rise_local.strftime('%H:%M')} {tz_name} ({rise_dt_utc.strftime('%H:%M')} UTC)\n"
-        term_text += f"Peak Altitude       : {alt[max_alt_idx]:.2f} deg at {peak_local.strftime('%H:%M')} {tz_name} ({peak_dt_utc.strftime('%H:%M')} UTC)\n"
+        term_text += f"Peak Altitude       : {alt[max_alt_idx]:.2f}° at {peak_local.strftime('%H:%M')} {tz_name} ({peak_dt_utc.strftime('%H:%M')} UTC)\n"
         term_text += f"Sets Below Horizon  : {set_str}\n\n"
         term_text += "Enter observing window below (UTC) and click Calculate Wire Orientation.\n"
         
-        document.getElementById("obsStartInput").value = f"{dt_list_utc[0].strftime('%Y-%m-%d')} {rise_dt_utc.strftime('%H:%M:%S')}"
-        document.getElementById("obsEndInput").value = f"{dt_list_utc[0].strftime('%Y-%m-%d')} {peak_dt_utc.strftime('%H:%M:%S')}"
+        document.getElementById("obsStartInput").value = rise_dt_utc.strftime('%Y-%m-%d %H:%M:%S')
+        document.getElementById("obsEndInput").value = peak_dt_utc.strftime('%Y-%m-%d %H:%M:%S')
         
         document.getElementById("window-controls").classList.remove("hidden")
     else:
@@ -382,8 +384,8 @@ def optimize_window(event=None):
     tz_name = start_dt_local.strftime('%Z') or "Local"
 
     term_text = f" OPTIMAL WIRE ORIENTATION FOR {target_name} DURING YOUR OBSERVING WINDOW\n"
-    term_text += f" Target Frequency  : {freq_hz / 1.0e6:.1f} MHz (Auto-selected)\n"
-    term_text += f" Observer Location : {lat:.2f} deg, {lon:.2f} deg\n"
+    term_text += f" Target Frequency   : {freq_hz / 1.0e6:.1f} MHz (Auto-selected)\n"
+    term_text += f" Observer Location : {lat:.2f}°, {lon:.2f}°\n"
     term_text += f" Window (Local)    : {start_dt_local.strftime('%Y-%m-%d %H:%M')} to {end_dt_local.strftime('%H:%M %Z')}\n"
     term_text += f" Window (UTC)      : {observe_start_utc.iso} to {observe_end_utc.iso}\n\n"
 
@@ -420,10 +422,10 @@ def optimize_window(event=None):
             best_w1_angle = w1_deg
             best_w2_angle = w1_deg + 90
 
-    term_text += f" Target Alt Range in Window: {np.min(altaz.alt.deg[visible_mask]):.1f} deg to {np.max(altaz.alt.deg[visible_mask]):.1f} deg\n\n"
+    term_text += f" Target Alt Range in Window: {np.min(altaz.alt.deg[visible_mask]):.1f}° to {np.max(altaz.alt.deg[visible_mask]):.1f}°\n\n"
     term_text += f" BEST SETUP FOUND \n"
-    term_text += f" Wire 1 Angle    : {best_w1_angle} deg from North\n"
-    term_text += f" Wire 2 Angle    : {best_w2_angle} deg from North\n"
+    term_text += f" Wire 1 Angle    : {best_w1_angle}° from North\n"
+    term_text += f" Wire 2 Angle    : {best_w2_angle}° from North\n"
 
     document.getElementById("terminal-out").innerText = term_text
     draw_track(highlight_start_utc=observe_start_utc, highlight_end_utc=observe_end_utc)
