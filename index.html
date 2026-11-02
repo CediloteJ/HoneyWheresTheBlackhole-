@@ -284,7 +284,10 @@ def show_path(event=None):
     target = SkyCoord(ra=coords["ra"], dec=coords["dec"], frame='icrs')
     freq_hz = coords["freq_hz"]
 
-    times_fine_utc = Time(date_str_utc, scale='utc') + np.arange(0, 24 * 60, 1) * u.minute
+    base_date_str = date_str_utc.split(" ")[0]
+    local_midnight = datetime.datetime.strptime(base_date_str, '%Y-%m-%d').replace(tzinfo=local_tz)
+    start_utc_time = Time(local_midnight.astimezone(datetime.timezone.utc))
+    times_fine_utc = start_utc_time + np.arange(0, 24 * 60, 1) * u.minute
     dt_list_utc = np.array([t.to_datetime(timezone=datetime.timezone.utc) for t in times_fine_utc])
     
     altaz_fine = target.transform_to(AltAz(obstime=times_fine_utc, location=location))
