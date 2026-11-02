@@ -248,7 +248,9 @@ def draw_track(highlight_start_utc=None, highlight_end_utc=None):
 
     ax2.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M', tz=local_tz))
     ax2.xaxis.set_major_locator(mdates.HourLocator(interval=2, tz=local_tz))
-    ax2.set_xlim(dt_list_local[0], dt_list_local[-1])
+    start_day_local = dt_list_local[0].replace(hour=0, minute=0, second=0, microsecond=0)
+    end_day_local = start_day_local + datetime.timedelta(days=1)
+    ax2.set_xlim(start_day_local, end_day_local)
     fig2.autofmt_xdate()
 
     ax2.set_title(f'{target_name} Altitude vs. Local Time ({tz_name})', color='white')
@@ -312,7 +314,7 @@ def show_path(event=None):
     above_horizon_indices = np.where(alt > 0)[0]
 
     term_text = f" SKY PATH FOR {target_name}\n"
-    term_text += f" Target Frequency   : {freq_hz / 1.0e6:.1f} MHz (Auto-selected)\n"
+    term_text += f" Target Frequency   : {freq_hz / 1.0e6:.1f} MHz\n"
     term_text += f" Observer Location : {lat:.2f}°, {lon:.2f}°\n\n"
 
     if len(above_horizon_indices) > 0:
